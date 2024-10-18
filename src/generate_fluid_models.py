@@ -4,16 +4,12 @@ __author__ = "fgasa"
 
 """
 import os
-import math
 import numpy as np
 import CoolProp.CoolProp as CP
-from CoolProp.CoolProp import PropsSI as SI
-from CoolProp.CoolProp import PhaseSI, PropsSI, get_global_param_string, get_fluid_param_string
-import datetime
 import argparse
 from scipy.special import erf
 
-STD_TEMPERATURE = 15.56 + 273.15  # 20
+STD_TEMPERATURE = 15.56 + 273.15
 STD_PRESSURE = 1.01325 * 1e5
 REFERENCE_GAS = 'CO2'
 REFERENCE_WATER = 'H2O'
@@ -23,10 +19,10 @@ CASE_CONFIG = {
     'spe11a': {
         'sw_imm': [0.32, 0.14, 0.12, 0.12, 0.12, 0.10, 0],
         'sg_imm': np.full(7, 0.1).tolist(),
-        'Pe': (np.array([1500, 300, 100, 25, 10, 1, 1]) / BARS_TO_PASCALS).tolist(), # converting np.array to list for consistency
+        'Pe': (np.array([1500, 300, 100, 25, 10, 1, 1]) / BARS_TO_PASCALS).tolist(),
         'P_c_max': np.full(7, 9.5e-1).tolist(),
         'c_a1': 2,
-        'rela_data_points': 250,
+        'rela_data_points': 1000,
         'pvt_data_points': 500,
         'temperature': 20.0 + 273.15,
         'min_pressure': 1.0 * BARS_TO_PASCALS,
@@ -42,7 +38,7 @@ CASE_CONFIG = {
         'P_c_max': np.full(7, 300).tolist(),
         'c_a1': 1.5,
         'rela_data_points': 250,
-        'pvt_data_points': 500,
+        'pvt_data_points': 1000,
         'temperature': 55 + 273.15,
         'min_pressure': 150 * BARS_TO_PASCALS,
         'max_pressure': 550 * BARS_TO_PASCALS
@@ -130,10 +126,11 @@ def get_fluid_properties(temperature, min_pressure, max_pressure, sampling_point
     pressures = np.linspace(min_pressure, max_pressure, sampling_points)
     properties = np.zeros((sampling_points, 8))
     for i, pressure in enumerate(pressures):
-        properties[i, :2] = temperature - 273.15, pressure
+        properties[i, :2] = temperature, pressure
         properties[i, 2:8] = [CP.PropsSI(prop, 'T', temperature, 'P', pressure, fluid)
                               for prop in ['D', 'V', 'H', 'L', 'O', 'C']]
         # enthalpy [J/kg], this unit is always consistent from CoolProp
+    
     return properties
 
 def compute_A_B(temperature, pressure, co2_density, fluid):
@@ -150,18 +147,17 @@ def compute_A_B(temperature, pressure, co2_density, fluid):
     return temp_var
 
 def get_fluid_solubility(properties):
-    temperature = properties[:, 6] + 273.15
-    pressure = properties[:, 7]
-    co2_density = properties[:, 0]
+    temperature = properties[:, 0]
+    pressure = properties[:, 1]
+    co2_density = properties[:, 2]
 
     A = compute_A_B(temperature, pressure, co2_density, REFERENCE_GAS)
     B = compute_A_B(temperature, pressure, co2_density, REFERENCE_WATER)
     # calculate solubility
     y_H2O = (1 - B) / (1 / A - B)
     x_CO2 = B * (1 - y_H2O)
-    # add solubility values to the input array
-    properties = np.column_stack((properties, y_H2O, x_CO2))
-    return properties
+    data = np.column_stack((temperature, pressure, y_H2O, x_CO2))
+    return data
 
 def write_data(np_array, header, output_dir, fluid, perfix, usr_delimiter, case_name):
     filename = case_name + "_"  + perfix + "_" + fluid + '.txt'
@@ -170,7 +166,7 @@ def write_data(np_array, header, output_dir, fluid, perfix, usr_delimiter, case_
 
     header = ','.join(header)
 
-    np.savetxt(output_path, np_array, delimiter=usr_delimiter, header=header, fmt='%.4e', comments='')
+    np.savetxt(output_path, np_array, delimiter=usr_delimiter, header=header, fmt='%.6e', comments='')
     print(f' Msg: {output_path} is written successfully')
 
 def main():
@@ -188,8 +184,8 @@ def main():
     print(' \n===========================================================================================')
     print(f" CoolProp version: {CP.get_global_param_string('version')}, gitrevision: {CP.get_global_param_string('gitrevision')}")
     print(f" Msg: Standard temperature: {STD_TEMPERATURE - 273.15} °C, Standard pressure: {STD_PRESSURE / BARS_TO_PASCALS} bar")
-    print(f" Msg: Fluid Name={REFERENCE_GAS}, Density={SI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_GAS)} kg/m³")
-    print(f" Msg: Fluid Name={REFERENCE_WATER}, Density={SI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_WATER)} kg/m³")
+    print(f" Msg: Fluid Name={REFERENCE_GAS}, Density={CP.PropsSI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_GAS)} kg/m³")
+    print(f" Msg: Fluid Name={REFERENCE_WATER}, Density={CP.PropsSI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_WATER)} kg/m³")
 
     # SPE11 specific cases
     pvt_data_points = case_config['pvt_data_points']
@@ -211,13 +207,13 @@ def main():
     h2o_pvt_data = get_fluid_properties(temperature, min_pressure, max_pressure, pvt_data_points, REFERENCE_WATER)
     co2_solubility_dar = get_fluid_solubility(co2_pvt_data)
 
-    header = ["temperature [°C]", "pressure [Pa]", "density [kg/m³]", "viscosity [Pa.s]", "enthalpy [J/kg]",
+    header = ["temperature [K]", "pressure [Pa]", "density [kg/m³]", "viscosity [Pa.s]", "enthalpy [J/kg]",
               "thermal_conductivity [W/m.K]", "cv [J/kg.K]", "cp [J/kg.K]"]
 
     write_data(co2_pvt_data, header, report_folder, REFERENCE_GAS, 'PVTx', ',', case_name)
     write_data(h2o_pvt_data, header, report_folder, REFERENCE_WATER, 'PVTx', ',', case_name)
 
-    header = [ "temperature [°C], pressure [Pa], cp [J/kg.K], y_H2O [-], x_CO2 [-]"]
+    header = [ "temperature [K], pressure [Pa], y_H2O [-], x_CO2 [-]"]
     write_data(co2_solubility_dar, header, report_folder, REFERENCE_GAS, 'solubility', ',', case_name)
     print(' ===========================================================================================\n')
 

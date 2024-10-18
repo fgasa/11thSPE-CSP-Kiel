@@ -137,12 +137,12 @@ class MeshGenerator:
             # f.write(f'COORDSYS\n   1 {self.nz} /\n\n')
 
             f.write('COORD\n')
-            np.savetxt(f, self.COORD, fmt='%.2f', delimiter=' ')
+            np.savetxt(f, self.COORD, fmt='%.6e', delimiter=' ')
             f.write('/\n\n')
 
             f.write('ZCORN\n')
 
-            np.savetxt(f, np.array(self.ZCORN).reshape(-1, 10), fmt='%.2f', delimiter=' ') #fmt='%.6e',
+            np.savetxt(f, np.array(self.ZCORN).reshape(-1, 10), fmt='%.6e', delimiter=' ') #fmt='%.6e',
             f.write('/\n\nACTNUM\n')
             f.write(f'  {self.actnum}*1 /\n')
 
@@ -183,7 +183,7 @@ class MeshGenerator:
         self.generate_coord()
         self.generate_zcorn()
         self.write_grdecl_file()
-        self.write_cmg_grid_file()
+        #self.write_cmg_grid_file()
 
 def main():
     parser = argparse.ArgumentParser(description='This script generates Cartesian grid type using GRDECL format')

@@ -91,9 +91,9 @@ def generate_petro_param(mesh, case_name, ni, filename, report_dir, keyname):
     elif case_name == 'spe11b' or case_name == 'spe11c':
 
         if keyname == 'PORO':
-            replacement_values = [0.1000, 0.2000, 0.2000, 0.2000, 0.2500, 0.3500, 0.0000]
+            replacement_values = [0.1000, 0.2000, 0.2000, 0.2000, 0.2500, 0.3500, 1e-6]
         elif keyname == 'PERMX':
-            replacement_values = [0.1013, 101.3250, 202.6500, 506.6250, 1013.2500, 2026.4999, 0.0000]
+            replacement_values = [0.1013, 101.3250, 202.6500, 506.6250, 1013.2500, 2026.4999, 1e-6]
         elif keyname == 'THCONR':
             replacement_values = [164.1600, 108.0000, 108.0000, 108.0000, 79.4880, 22.4600, 172.8000]
 
