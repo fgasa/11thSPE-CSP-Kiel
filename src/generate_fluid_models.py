@@ -174,6 +174,94 @@ def write_data(np_array, header, output_dir, fluid, perfix, usr_delimiter, case_
     np.savetxt(output_path, np_array, delimiter=usr_delimiter, header=header, fmt='%.6e', comments='')
     print(f' Msg: {output_path} is written successfully')
 
+def write_gas_pvtx(pvt_array, solub_array, ref_gas_density, ref_oil_density, pvt_type, fluid, output_dir):
+    filename = f"{pvt_type}_{fluid}_CP.INC"
+    output_path = os.path.join(output_dir, filename).upper()
+
+    pressure = pvt_array[:, 1] / BARS_TO_PASCALS
+    temperature = pvt_array[0, 0]
+
+    fluid_density = pvt_array[:, 2]
+    fluid_viscosity = pvt_array[:, 3] * 1e3 #convert viscosity from Pa.s to cP
+    fluid_fvf = ref_gas_density / fluid_density
+
+    x_oil = solub_array[:, 2]
+    x_gas = solub_array[:, 3]
+    rv = (x_oil * WATER_MW * ref_gas_density) / ((1 - x_oil) * GAS_MW * ref_oil_density + x_oil * WATER_MW)  # mass ratio
+
+    if pvt_type == 'PVTG':
+        fluid_fvf = ref_gas_density / fluid_density / (1-x_gas)
+        data = np.column_stack((pressure, rv, fluid_fvf, fluid_viscosity))
+        with open(output_path, 'w') as f:
+            f.write(CP_VERSION)
+            f.write(REFERENCE_CONDITION)
+            f.write('-- Pressure [bar] RV [m³/m³] Fluid FVF [rm³/sm³] Viscosity [cP]\nPVTG\n')
+            for i in range(data.shape[0]):
+                f.write(f"{pressure[i]:.6e} {rv[i]:.6e} {fluid_fvf[i]:.6e} {fluid_viscosity[i]:.6e}\n")
+                f.write(f"\t\t\t {rv[i]*0:.6e} {fluid_fvf[i]:.6e} {fluid_viscosity[i]:.6e} /\n")
+        print(f' Msg: Wet gas PVT with vaporized oil is generated (inc. oil vapor-gas ratio')
+        return
+    elif pvt_type == 'PVDG':
+        header = ['-- Pressure [bar]', 'Fluid FVF [rm³/sm³]', 'Viscosity [cP]\nPVDG']
+        data = np.column_stack((pressure, fluid_fvf, fluid_viscosity))
+        print(f' Msg: Dry gas fluid PVT is generated')
+    elif pvt_type == 'PVZG':
+        zfactor = CP.PropsSI('Z', 'T', temperature, 'P', pressure * BARS_TO_PASCALS, fluid)
+        header = ['-- Pressure [bar]', 'Compressibility Z-factor[-]', 'Viscosity [cP]\nPVZG\n'+str(temperature-273.15)+' /']
+        data = np.column_stack((pressure, zfactor, fluid_viscosity))
+        print(f' Msg: Dry gas fluid PVT with Z-factor is generated.')
+    
+    # Combine the CP_VERSION and REFERENCE_CONDITION with the PVT header
+    header_lines = [CP_VERSION.strip(), REFERENCE_CONDITION.strip()]
+    header_lines += header
+    header = '\n'.join(header_lines[:2]) + '\n' + ' '.join(header_lines[2:])
+    np.savetxt(output_path, data, delimiter=' ', header=header, fmt='%.6e', comments='', footer='/')
+
+def write_oil_pvtx(pvt_array, solub_array, ref_oil_density, ref_gas_density, pvt_type, fluid, output_dir):
+    filename = f"{pvt_type}_{fluid}_CP.INC"
+    output_path = os.path.join(output_dir, filename).upper()
+    pressure = pvt_array[:, 1] / BARS_TO_PASCALS
+    fluid_density = pvt_array[:, 2]
+
+    fluid_viscosity = pvt_array[:, 3] * 1e3
+    fluid_fvf = ref_oil_density / fluid_density
+
+    x_oil = solub_array[:, 2]
+    x_gas = solub_array[:, 3]
+
+    rs = (x_gas * GAS_MW * ref_oil_density) / (WATER_MW * (ref_gas_density - (x_gas * GAS_MW))) #mass fraction
+
+    if pvt_type == 'PVDO':
+        header = ['-- Pressure [bar]', 'Fluid FVF [rm³/sm³]', 'Viscosity [cP]\nPVDO']
+        data = np.column_stack((pressure, fluid_fvf, fluid_viscosity))
+        print(f' Msg: Dead oil PVT is generated')
+    elif pvt_type == 'PVTW':
+        header = ['-- Pressure [bar]', 'Fluid FVF [rm³/sm³]', 'Viscosity [cP]\nPVTW']
+        data = np.column_stack((pressure, fluid_fvf, fluid_viscosity))
+        print(f' Msg: Water PVT is generated')
+    elif pvt_type == 'PVTO':
+        fluid_fvf = ref_oil_density / fluid_density / (1 - x_oil)
+        data = np.column_stack((rs, pressure, fluid_fvf, fluid_viscosity))
+        with (open(output_path, 'w') as f):
+            f.write(CP_VERSION)
+            f.write(REFERENCE_CONDITION)
+            f.write('-- RS [m³/m³] Pressure [bar] Fluid FVF [rm³/sm³] Viscosity [cP]\nPVTO\n')
+            for i in range(data.shape[0]):
+                f.write(f"{rs[i]:.6e}\t{pressure[i]:.6e}\t{fluid_fvf[i]:.6e}\t{fluid_viscosity[i]:.6e}\n")
+                # todo: after double-checking, include the remaining part for the unsaturated zone
+
+        print(f' Msg: Live oil PVT with vaporized gas is generated')
+        return
+    elif pvt_type == 'PVCO':
+        header = ['-- Pressure [bar]', 'RS [m³/m³]', 'Fluid FVF [rm³/sm³]', 'Fluid compressibility [1/bar]\nPVCO']
+        fluid_compressibility = 3e-5
+        data = np.column_stack((pressure, rs, fluid_fvf, fluid_viscosity, fluid_compressibility))
+        print(f' Msg: Live oil fluid PVT is generated')
+    header_lines = [CP_VERSION.strip(), REFERENCE_CONDITION.strip()]
+    header_lines += header
+    header = '\n'.join(header_lines[:2]) + '\n' + ' '.join(header_lines[2:])
+    np.savetxt(output_path, data, delimiter=' ', header=header, fmt='%.6e', comments='', footer='/')
+
 
 def main():
     parser = argparse.ArgumentParser(description='This script generates fluid flow models for each problem.')
@@ -221,6 +309,8 @@ def main():
 
     header = ['temperature [K], pressure [Pa], y_H2O [mol/mol], x_CO2 [mol/mol]']
     write_data(co2_solubility_data, header, report_folder, REFERENCE_GAS, 'solubility', ',', case_name)
+    write_gas_pvtx(co2_pvt_data, co2_solubility_data, REFERENCE_GAS_DENSITY, REFERENCE_WATER_DENSITY, 'PVTG','CO2', report_folder)
+    write_oil_pvtx(h2o_pvt_data, co2_solubility_data, REFERENCE_WATER_DENSITY, REFERENCE_GAS_DENSITY, 'PVDO','H2O', report_folder)
     print(' ===========================================================================================\n')
 
 if __name__ == '__main__':
