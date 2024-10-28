@@ -14,13 +14,20 @@ STD_PRESSURE = 1.01325 * 1e5
 REFERENCE_GAS = 'CO2'
 REFERENCE_WATER = 'H2O'
 BARS_TO_PASCALS = 1e5
+REFERENCE_GAS_DENSITY = 1.868433
+REFERENCE_WATER_DENSITY = 998.107723
+GAS_MW = 44.01   #The molar mass of CO₂ is 44.01 g/mol or 0.04401 kg/mol
+WATER_MW = 18.01
+
+CP_VERSION = f"-- CoolProp version: {CP.get_global_param_string('version')}, gitrevision: {CP.get_global_param_string('gitrevision')}\n"
+REFERENCE_CONDITION = f"-- Standard temperature: {STD_TEMPERATURE - 273.15} C, Standard pressure: {STD_PRESSURE / BARS_TO_PASCALS} bar\n"
 
 CASE_CONFIG = {
     'spe11a': {
         'sw_imm': [0.32, 0.14, 0.12, 0.12, 0.12, 0.10, 0],
         'sg_imm': np.full(7, 0.1).tolist(),
-        'Pe': (np.array([1500, 300, 100, 25, 10, 1, 1]) / BARS_TO_PASCALS).tolist(),
-        'P_c_max': np.full(7, 9.5e-1).tolist(),
+        'pc_entry': (np.array([1500, 300, 100, 25, 10, 1, 1]) / BARS_TO_PASCALS).tolist(),
+        'pc_max': np.full(7, 9.5e-1).tolist(),
         'c_a1': 2,
         'rela_data_points': 1000,
         'pvt_data_points': 500,
@@ -33,9 +40,9 @@ CASE_CONFIG = {
         'sg_imm': np.full(7, 0.1).tolist(),
         'poro': [0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6],
         'perm': [1e-16, 1e-13, 2e-13, 5e-13, 1e-12, 2e-12, 9.87e-21],
-        'Pe': (np.sqrt(np.array([0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6]) /
+        'pc_entry': (np.sqrt(np.array([0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6]) /
                       np.array([1e-16, 1e-13, 2e-13, 5e-13, 1e-12, 2e-12, 9.87e-21])) * 0.00612 / BARS_TO_PASCALS).tolist(),
-        'P_c_max': np.full(7, 300).tolist(),
+        'pc_max': np.full(7, 300).tolist(),
         'c_a1': 1.5,
         'rela_data_points': 250,
         'pvt_data_points': 1000,
@@ -48,9 +55,9 @@ CASE_CONFIG = {
         'sg_imm': np.full(7, 0.1).tolist(),
         'poro': [0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6],
         'perm': [1e-16, 1e-13, 2e-13, 5e-13, 1e-12, 2e-12, 9.87e-21],
-        'Pe': (np.sqrt(np.array([0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6]) /
+        'pc_entry': (np.sqrt(np.array([0.1, 0.2, 0.2, 0.2, 0.25, 0.35, 1e-6]) /
                       np.array([1e-16, 1e-13, 2e-13, 5e-13, 1e-12, 2e-12, 9.87e-21])) * 0.00612 / BARS_TO_PASCALS).tolist(),
-        'P_c_max': np.full(7, 300).tolist(),
+        'pc_max': np.full(7, 300).tolist(),
         'c_a1': 1.5,
         'rela_data_points': 250,
         'pvt_data_points': 500,
@@ -60,12 +67,13 @@ CASE_CONFIG = {
     }
 }
 
-def get_fluid_fugacity_coefficients(temperature, pressure, rhoCO2, fluid):
-    '''compute equilibrium constants and fugacity coefficients for CO2 and H2O'''
+def get_fluid_fugacity_coefficients(temperature, pressure, co2_density, fluid):
+    '''Compute equilibrium constants and fugacity coefficients for CO2 and H2O, this is rewritten
+    from github.com/Simulation-Benchmarks/11thSPE-CS11thSPE-CSP/thermodynamics'''
     TinC = temperature - 273.15
     R = 83.1446261815324
     p_bar = pressure / BARS_TO_PASCALS
-    V = 1 / (rhoCO2 / 44.01e-3) * 1e6  # molar volume
+    V = 1 / (co2_density / 44.01e-3) * 1e6  # molar volume
 
     if fluid == 'CO2':
         c = [1.189, 1.304e-2, -5.446e-5]  # CO2 constants
@@ -88,35 +96,32 @@ def get_fluid_fugacity_coefficients(temperature, pressure, rhoCO2, fluid):
 
     return phi, k0
 
-def generate_fluid_rela(case_name, report_folder):
-    '''Generates relative permeability and saturation tables for all regions and writes them to one file'''
+def generate_fluid_rela(case_name):
+    ''' Generates relative permeability and saturation tables for all regions and writes them to one file. This function 
+    has been primarily rewritten from github.com/Simulation-Benchmarks/11thSPE-CSP/blob/main/thermodynamics/writeFluidFlowerSGOF '''
 
     case_config = CASE_CONFIG[case_name]
-    sw_imm, sg_imm, Pe, P_c_max, c_a1, data_points = (
-        case_config['sw_imm'], case_config['sg_imm'], case_config['Pe'],
-        case_config['P_c_max'], case_config['c_a1'], case_config['rela_data_points']
-    )
+    sw_imm, sg_imm, pc_entry, pc_max, c_a1, data_points = (
+        case_config['sw_imm'], case_config['sg_imm'], case_config['pc_entry'],
+        case_config['pc_max'], case_config['c_a1'], case_config['rela_data_points'])
 
     all_facies = []
 
     for facies in range(len(sw_imm)):
-        s0 = sg_imm[facies]
-        sat = np.concatenate(([0], np.linspace(s0, 1, data_points - 1)))
-        sg = np.maximum((sat - s0) / (1 - s0), 0)
+        sat = np.concatenate(([0], np.linspace( sg_imm[facies], 1, data_points - 1)))
+        sg = np.maximum((sat - sg_imm[facies]) / (1 - sg_imm[facies]), 0)
         so = np.maximum((1 - sat - sw_imm[facies]) / (1 - sw_imm[facies]), 0)
         krg = sg ** c_a1
         kro = so ** c_a1
 
-        so_adjusted = np.where(so == 0, np.finfo(float).eps, so)  # Replace 0 with a small value
-        pc_og_bar = Pe[facies] * so_adjusted ** (1 - c_a1)  # Safe to compute now
-        pcmax = P_c_max[facies]
-        pc_og = pcmax * erf((pc_og_bar / pcmax) * (np.sqrt(np.pi) / 2))
+        so_adjusted = np.where(so == 0, np.finfo(float).eps, so)
+        pc_og = pc_entry[facies] * so_adjusted ** (1 - c_a1)
+        pc_og = pc_max[facies] * erf((pc_og / pc_entry[facies]) * (np.sqrt(np.pi) / 2))
 
         # Combining the results into one array for easier writing
         result_data = np.vstack((sat, krg, kro, pc_og)).T
 
         all_facies.append(result_data)
-        
         all_facies.append(np.full((1, result_data.shape[1]), np.nan))  # Use NaNs for separation(/)
 
     all_facies = np.vstack(all_facies)
@@ -151,8 +156,8 @@ def get_fluid_solubility(properties):
     pressure = properties[:, 1]
     co2_density = properties[:, 2]
 
-    A = compute_A_B(temperature, pressure, co2_density, REFERENCE_GAS)
-    B = compute_A_B(temperature, pressure, co2_density, REFERENCE_WATER)
+    A = compute_A_B(temperature, pressure, co2_density, REFERENCE_WATER)
+    B = compute_A_B(temperature, pressure, co2_density, REFERENCE_GAS)
     # calculate solubility
     y_H2O = (1 - B) / (1 / A - B)
     x_CO2 = B * (1 - y_H2O)
@@ -169,21 +174,22 @@ def write_data(np_array, header, output_dir, fluid, perfix, usr_delimiter, case_
     np.savetxt(output_path, np_array, delimiter=usr_delimiter, header=header, fmt='%.6e', comments='')
     print(f' Msg: {output_path} is written successfully')
 
+
 def main():
-    parser = argparse.ArgumentParser(description='This script generates fluid flow modes for each problem.')
+    parser = argparse.ArgumentParser(description='This script generates fluid flow models for each problem.')
     parser.add_argument('-c', '--case', default='.',
                         help='Identification of the SPE11 benchmark case: spe11a, spe11b or spe11c.')
 
     parser.add_argument('-f', '--folder', default='.',
-                        help='Path to the folder containing the simulation files for genering reports.')
+                        help='Path to the folder containing the simulation input files.')
 
     args = parser.parse_args()
     case_name = args.case
     case_config = CASE_CONFIG[case_name]
     output_dir = args.folder
     print(' \n===========================================================================================')
-    print(f" CoolProp version: {CP.get_global_param_string('version')}, gitrevision: {CP.get_global_param_string('gitrevision')}")
-    print(f" Msg: Standard temperature: {STD_TEMPERATURE - 273.15} °C, Standard pressure: {STD_PRESSURE / BARS_TO_PASCALS} bar")
+    print(CP_VERSION)
+    print(REFERENCE_CONDITION)
     print(f" Msg: Fluid Name={REFERENCE_GAS}, Density={CP.PropsSI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_GAS)} kg/m³")
     print(f" Msg: Fluid Name={REFERENCE_WATER}, Density={CP.PropsSI('D', 'P', STD_PRESSURE, 'T', STD_TEMPERATURE, REFERENCE_WATER)} kg/m³")
 
@@ -197,24 +203,24 @@ def main():
     os.makedirs(report_folder, exist_ok=True)
 
     # Generate RELA and scale saturation table
-    all_rela = generate_fluid_rela(case_name, report_folder)
+    all_rela = generate_fluid_rela(case_name)
 
-    header = [ "SGOF\n--SG [-] KRG [-] KROG [-] PCOG [-]"]
+    header = ['-- SG [-] KRG [-] KROG [-] PCOG [bar]\nSGOF']
     # write all rela into a single file
     write_data(all_rela, header, report_folder, REFERENCE_GAS, 'RELA', ' ', case_name)
 
     co2_pvt_data = get_fluid_properties(temperature, min_pressure, max_pressure, pvt_data_points, REFERENCE_GAS)
     h2o_pvt_data = get_fluid_properties(temperature, min_pressure, max_pressure, pvt_data_points, REFERENCE_WATER)
-    co2_solubility_dar = get_fluid_solubility(co2_pvt_data)
+    co2_solubility_data = get_fluid_solubility(co2_pvt_data)
 
-    header = ["temperature [K]", "pressure [Pa]", "density [kg/m³]", "viscosity [Pa.s]", "enthalpy [J/kg]",
-              "thermal_conductivity [W/m.K]", "cv [J/kg.K]", "cp [J/kg.K]"]
+    header = ['temperature [K]', 'pressure [Pa]', 'density [kg/m³]', 'viscosity [Pa.s]', 'enthalpy [J/kg]',
+              'thermal_conductivity [W/m.K]', 'cv [J/kg.K]', 'cp [J/kg.K]']
 
     write_data(co2_pvt_data, header, report_folder, REFERENCE_GAS, 'PVTx', ',', case_name)
     write_data(h2o_pvt_data, header, report_folder, REFERENCE_WATER, 'PVTx', ',', case_name)
 
-    header = [ "temperature [K], pressure [Pa], y_H2O [-], x_CO2 [-]"]
-    write_data(co2_solubility_dar, header, report_folder, REFERENCE_GAS, 'solubility', ',', case_name)
+    header = ['temperature [K], pressure [Pa], y_H2O [mol/mol], x_CO2 [mol/mol]']
+    write_data(co2_solubility_data, header, report_folder, REFERENCE_GAS, 'solubility', ',', case_name)
     print(' ===========================================================================================\n')
 
 if __name__ == '__main__':
