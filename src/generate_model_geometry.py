@@ -230,7 +230,7 @@ def main():
     usr_zcoord = np.concatenate([[z_datum], z_datum + np.cumsum(dz_all)])
 
     XCOORD, YCOORD, ZCOORD = np.meshgrid(usr_xcoord, usr_ycoord, usr_zcoord)
-    if case_name == 'spe11c':
+    if case_name == 'spe11c_kiel':
         X, Y = np.meshgrid(usr_xcoord, usr_ycoord)
         # todo, fix equation
         Z0 = z_datum - case_config['amplitude'] * np.exp(-((X - (usr_xcoord[-1] - usr_xcoord[0]) / 2) ** 2 / (2 * case_config['sigmax'] ** 2) +
@@ -243,6 +243,9 @@ def main():
 
         for i in range(nK):
             ZCOORD[:, :, i + 1] = ZCOORD[:, :, i] + dz_all[i]
+    elif case_name == 'spe11c':
+        ZCOORD = ZCOORD - 150 * (1 - ((YCOORD - 2500) / 2500) ** 2) + YCOORD / 500
+    
     else:
        ZCOORD[:, :, 0] = z_datum
 

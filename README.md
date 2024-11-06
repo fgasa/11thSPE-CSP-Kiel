@@ -9,8 +9,14 @@ To build the grid/mesh for models using the reporting grid:
 ```bash
 python generate_model_geometry.py -c spe11a -f datasets -ni 280 -nj 1 -nk 120 -dx 0.01 -dy 0.01 -dz 0.01 -z0 0
 python generate_model_geometry.py -c spe11b -f datasets -ni 842 -nj 1 -nk 120 -dx 10 -dy 1 -dz 10 -z0 0
-python generate_model_geometry.py -c spe11c -f datasets -ni 170 -nj 100 -nk 120 -dx 50 -dy 50 -dz 10 -z0 500
+python generate_model_geometry.py -c spe11c_kiel -f datasets -ni 170 -nj 100 -nk 120 -dx 50 -dy 50 -dz 10 -z0 500
 ```
+
+To generate spe11c grid using parabolic shape with 10 m depth offset and 150 m amplitute apply the following:
+```bash
+python generate_model_geometry.py -c spe11c -f datasets -ni 170 -nj 100 -nk 120 -dx 50 -dy 50 -dz 10 -z0 150
+```
+
 To generate model parameters (e.g., petrophysics), we used the structural grid provided by the SPE Community Resources. This script simply replaces the facies with input parameters:
 ```bash
 python generate_model_params.py -c spe11a -f ..\datasets\SPE11A_280x1x120.vtu
@@ -25,6 +31,20 @@ For the internal PVT sensitivity study, the CoolProp thermodynamic library v6.6.
 To write report files(spars, performance, time series):
 ```bash
 python write_performance_data.py -c spe11a -f rst_SPE11A_280x1x120_CAUCLUSTER
+```
+
+To generate spatial maps for all time steps using the official 11thSPE-CSP functions, use the following:
+
+```bat
+@echo off
+setlocal enabledelayedexpansion
+
+for /f "tokens=3,4 delims=_" %%A in ('dir /b *.csv ^| sort /+2') do (
+    set "filename=%%B"
+    set "filename=!filename:y.csv=!"
+    echo !filename!
+    python ./11thSPE-CSP/.../spe11b_visualize_spatial_maps.py -f spe11b -t !filename! -g kiel
+    )
 ```
 
 ## Key findings and deviations from the description
@@ -45,7 +65,7 @@ python write_performance_data.py -c spe11a -f rst_SPE11A_280x1x120_CAUCLUSTER
   * Injection well depth is not explicitly given, and due to gridding reference depth for initialisation, specifying pressure at the centerline of Well #1 of 300 bar may lead to significant deviation.
 
 ## License
-This repository is licensed under the [GPL-3.0 license](D:\Nextcloud\_Codes\github_repos\main_repos\11thSPE-CSP-Kiel\LICENSE). You are free to use, modify and distribute the software under certain conditions. Any distribution of the software must also include a copy of the license and copyright notices.
+This repository is licensed under the [GPL-3.0 license](LICENSE). You are free to use, modify and distribute the software under certain conditions. Any distribution of the software must also include a copy of the license and copyright notices.
 
 ## Acknowledgement
 This research was supported in part through high-performance computing resources available at the Kiel University Computing Centre.
