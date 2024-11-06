@@ -56,13 +56,16 @@ for /f "tokens=3,4 delims=_" %%A in ('dir /b *.csv ^| sort /+2') do (
   * The pre-built OPM Flow gas-water black oil model performs better than the gas-oil model in comparison.
   * The presence of initial capillary pressure for the absence phase ("virtual" gas) has a significant impact on dissolution rates. Therefore, data increments in the relative permeability/capillary pressure functions (RELA) should be relatively small.
   * High node numbers at the cluster will not always decrease total runtime. Instead, domain decomposition may lead to issues with numerical stability. Therefore, only 14 logical cores are used for this problem.
+<img src="figures/spe11a_kiel_50h.png" width="500">
 * __SPE11B__
   * Unphysical temperature oscillation occurs at the cells adjacent to the well #1 perforation.
   * For problems #spe11bc, 32 logical cores are used.
   * The derivation of CO2 and H2O mole fractions from black oil models is based on [Hassanzadeh et al. (2008)](https://www.sciencedirect.com/science/article/pii/S1750583607000102).
+  <img src="figures/spe11b_facies.png" width="500">
 * __SPE11C__
   * The mesh is based on a Gaussian function to mimic the anticline shape. This approach allows us to keep the crest point and dip angle according to the benchmark description. The resulting mesh is fully symmetric.
   * Injection well depth is not explicitly given, and due to gridding reference depth for initialisation, specifying pressure at the centerline of Well #1 of 300 bar may lead to significant deviation.
+<img src="figures/spe11c_kiel_50y.png" width="500">
 
 ## License
 This repository is licensed under the [GPL-3.0 license](LICENSE). You are free to use, modify and distribute the software under certain conditions. Any distribution of the software must also include a copy of the license and copyright notices.

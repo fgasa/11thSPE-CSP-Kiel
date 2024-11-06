@@ -85,7 +85,6 @@ def get_array_from_rst(all_rst_paths, key_name):
 
     return np.array(array_list)
 
-# get model xyz for cell/element
 def get_model_xyz(target_egrid, filtered_element):
     # target_egrid(<class 'opm.opmcommon_python.EGrid'>) and
     x_list, y_list, z_list = [], [], []
@@ -296,7 +295,6 @@ def write_time_series(array, header, output_dir, case_name, perfix):
 
 def main():
     start = datetime.datetime.now()
-    write_dense_data = True
 
     parser = argparse.ArgumentParser(description='This script generates performance data report from OPM Flow/ECLIPSE'
                                                  'reservoir simulator for CSP SEP11.')
